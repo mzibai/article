@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TXT搜索器</title>
+    <style>
+        :root {
+            --bg: #f5f5f5;
+            --card: #ffffff;
+            --text: #333333;
+            --sub: #888888;
+            --border: #e0e0e0;
+            --accent: #333333;
+            --accent-text: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --bg: #1a1a1a;
+            --card: #2a2a2a;
+            --text: #e0e0e0;
+            --sub: #999999;
+            --border: #3a3a3a;
+            --accent: #e0e0e0;
+            --accent-text: #1a1a1a;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 16px;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* 顶部 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .header h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            color: var(--text);
+        }
+
+        /* 搜索 */
+        .search-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        #searchInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 1rem;
+            background: var(--card);
+            color: var(--text);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        #searchInput:focus {
+            border-color: var(--text);
+        }
+
+        #searchBtn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            background: var(--accent);
+            color: var(--accent-text);
+            font-size: 1rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        /* 结果列表 */
+        #result {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .count {
+            font-size: 0.85rem;
+            color: var(--sub);
+            margin-bottom: 8px;
+        }
+
+        .file-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .file-header {
+            padding: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+        }
+
+        .file-header:hover {
+            background: rgba(0,0,0,0.03);
+        }
+
+        [data-theme="dark"] .file-header:hover {
+            background: rgba(255,255,255,0.03);
+        }
+
+        .file-header .name {
+            font-size: 0.95rem;
+        }
+
+        .file-header .arrow {
+            font-size: 0.8rem;
+            color: var(--sub);
+            transition: transform 0.2s;
+        }
+
+        .file-header.open .arrow {
+            transform: rotate(90deg);
+        }
+
+        .file-content {
+            display: none;
+            padding: 0 14px 14px;
+            border-top: 1px solid var(--border);
+        }
+
+        .file-content.show {
+            display: block;
+        }
+
+        .file-content pre {
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-top: 12px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .empty {
+            text-align: center;
+            color: var(--sub);
+            padding: 40px 0;
+            font-size: 0.95rem;
+        }
+
+        /* 手机适配 */
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            .search-row { flex-direction: column; }
+            #searchBtn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>TXT搜索</h2>
+            <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+        </div>
+        
+        <div class="search-row">
+            <input type="text" id="searchInput" placeholder="输入关键词搜索…" onkeydown="if(event.key==='Enter')searchFiles()">
+            <button id="searchBtn" onclick="searchFiles()">搜索</button>
+        </div>
+        
+        <div class="count" id="count"></div>
+        <div id="result">
+            <div class="empty">输入关键词开始搜索</div>
+        </div>
+    </div>
+    
+    <script>
+        // ========= 在这里手动添加txt文件名 =========
+        const txtFileList = [
+            "[1v1 完结]《双性小皇帝调教指南（古代_高H_BDSM_虐身》作者：没有名字.txt",
+            "《深度诱入》作者：欲晓 (父子 年下 高H).txt",
+            "《蛇缚番外》BY月色如殇 (蛇X人 父子 高H).txt",
+            "《鬼父》作者：再别今夜.txt",
+            "危险试验小少爷调教指南 作者：雪月零.txt",
+            "双颜引诱.txt",
+            "奈上越轨.txt",
+            "封刀.txt",
+            "思予不良.txt",
+            "晚听清夜.txt",
+            "晚听纵容.txt",
+            "柚欢系统.txt",
+            "秋茉争夺.txt",
+            "老师，你的狗链掉了（双性，调教，sm） 作者：肉丸爱吃肉.txt",
+            "臣服游戏（BDSM） 作者：结草的兔子.txt",
+            "草莓哭包.txt",
+            "鬼之花嫁.txt",
+        ];
+        const basePath = "./txts/";
+
+        // ===== 深色模式 =====
+        const themeBtn = document.querySelector('.theme-toggle');
+        const saved = localStorage.getItem('theme');
+        const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (saved === 'dark' || (!saved && sysDark)) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeBtn.textContent = '☀️';
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            if (isDark) {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'light');
+                themeBtn.textContent = '🌙';
+            } else {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                themeBtn.textContent = '☀️';
+            }
+        }
+
+        // ===== 搜索 =====
+        async function searchFiles() {
+            const kw = document.getElementById("searchInput").value.trim().toLowerCase();
+            const resultDom = document.getElementById("result");
+            const countDom = document.getElementById("count");
+            resultDom.innerHTML = "";
+            countDom.textContent = "";
+
+            if (!kw) {
+                resultDom.innerHTML = '<div class="empty">输入关键词开始搜索</div>';
+                return;
+            }
+
+            if (txtFileList.length === 0) {
+                resultDom.innerHTML = '<div class="empty">暂无文件</div>';
+                return;
+            }
+
+            let found = 0;
+
+            for (const fileName of txtFileList) {
+                try {
+                    const resp = await fetch(basePath + fileName);
+                    const text = await resp.text();
+                    const lowerText = text.toLowerCase();
+                    if (fileName.toLowerCase().includes(kw) || lowerText.includes(kw)) {
+                        found++;
+                        const escapedName = escapeHtml(fileName);
+                        const escapedText = escapeHtml(text);
+                        const id = 'file-' + found;
+
+                        resultDom.innerHTML += `
+                        <div class="file-item">
+                            <div class="file-header" onclick="toggleContent('${id}')">
+                                <span class="name">📄 ${escapedName}</span>
+                                <span class="arrow">▶</span>
+                            </div>
+                            <div class="file-content" id="${id}">
+                                <pre>${escapedText}</pre>
+                            </div>
+                        </div>
+                    `;
+                    }
+                } catch (e) {
+                    console.log("读取失败：" + fileName);
+                }
+            }
+
+            countDom.textContent = found > 0 ? `找到 ${found} 个文件` : '没有匹配结果';
+            if (found === 0) {
+                resultDom.innerHTML = '<div class="empty">没有匹配结果</div>';
+            }
+        }
+
+        function toggleContent(id) {
+            const content = document.getElementById(id);
+            const header = content.parentElement.querySelector('.file-header');
+            content.classList.toggle('show');
+            header.classList.toggle('open');
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
