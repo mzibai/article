@@ -177,6 +177,27 @@
             overflow-y: auto;
         }
 
+        /* 下载按钮 */
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 10px;
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--card);
+            color: var(--text);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .download-btn:hover {
+            background: var(--accent);
+            color: var(--accent-text);
+        }
+
         .empty {
             text-align: center;
             color: var(--sub);
@@ -308,15 +329,19 @@
                 if (file.name.toLowerCase().includes(kw)) {
                     found++;
                     const id = 'file-' + found;
+                    const safeName = escapeHtml(file.name);
 
                     resultDom.innerHTML += `
                         <div class="file-item">
                             <div class="file-header" onclick="toggleContent('${id}')">
-                                <span class="name">📄 ${escapeHtml(file.name)}</span>
+                                <span class="name">📄 ${safeName}</span>
                                 <span class="arrow">▶</span>
                             </div>
                             <div class="file-content" id="${id}">
                                 <pre>${escapeHtml(file.content)}</pre>
+                                <button class="download-btn" onclick="downloadFile('${file.name.replace(/'/g, "\\'")}')">
+                                    ⬇️ 下载文件
+                                </button>
                             </div>
                         </div>
                     `;
@@ -331,6 +356,25 @@
             isSearching = false;
             btn.disabled = false;
             btn.textContent = '搜索';
+        }
+
+        // ===== 下载功能 =====
+        function downloadFile(fileName) {
+            const file = fileCache.find(f => f.name === fileName);
+            if (!file) {
+                alert('文件未找到：' + fileName);
+                return;
+            }
+
+            const blob = new Blob([file.content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         function toggleContent(id) {
