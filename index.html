@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TXT搜索器</title>
+    <title>文章搜索</title>
     <style>
         :root {
             --bg: #f5f5f5;
@@ -339,7 +339,7 @@
             }
         }
 
-        // ===== 点击展开：加载内容 =====
+        // ===== 点击展开：加载内容（只显示前200字） =====
         async function toggleContent(id, fileName) {
             const content = document.getElementById(id);
             const header = content.parentElement.querySelector('.file-header');
@@ -360,8 +360,19 @@
                 content.innerHTML = '<div class="loading-text">⏳ 加载中…</div>';
                 try {
                     const text = await loadContent(fileName);
+                    const maxLen = 200;
+                    const isLong = text.length > maxLen;
+                    const preview = isLong ? text.slice(0, maxLen) : text;
+
                     content.innerHTML = `
-                        <pre>${escapeHtml(text)}</pre>
+                        <pre id="text-${id}">${escapeHtml(preview)}${isLong ? '…' : ''}</pre>
+                        ${isLong ? `
+                            <div style="margin-top:8px">
+                                <button class="download-btn" onclick="expandText('${id}', '${fileName.replace(/'/g, "\\'")}')">
+                                    📖 展开全文（共 ${text.length} 字）
+                                </button>
+                            </div>
+                        ` : ''}
                         <button class="download-btn" onclick="downloadFile('${fileName.replace(/'/g, "\\'")}')">
                             ⬇️ 下载文件
                         </button>
@@ -370,6 +381,21 @@
                     content.innerHTML = '<div class="loading-text">❌ 加载失败</div>';
                 }
             }
+        }
+
+        // ===== 展开全文 =====
+        function expandText(id, fileName) {
+            const textDom = document.getElementById('text-' + id);
+            const content = document.getElementById(id);
+            const text = contentCache[fileName];
+
+            if (!text) return;
+
+            textDom.textContent = text;
+
+            // 移除"展开全文"按钮
+            const btn = content.querySelector('button[onclick*="expandText"]');
+            if (btn) btn.remove();
         }
 
         // ===== 搜索 =====
