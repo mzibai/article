@@ -195,7 +195,7 @@
     <div class="container">
         <div class="header">
             <h2>TXT搜索</h2>
-            <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+            <button class="theme-toggle" onclick="toggleTheme()">☀️</button>
         </div>
         
         <div class="search-row">
@@ -212,34 +212,26 @@
     
     <script>
         // ===== 数据缓存 =====
-        let fileCache = [];       // [{name, content}]
-        let isSearching = false;  // 防止重复搜索
-        let searchTimer = null;   // 防抖
+        let fileCache = [];
+        let isSearching = false;
+        let searchTimer = null;
 
-        // ===== 主题 =====
+        // ===== 主题：默认深色，不存储 =====
+        document.documentElement.setAttribute('data-theme', 'dark');
         const themeBtn = document.querySelector('.theme-toggle');
-        const saved = localStorage.getItem('theme');
-        const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-        if (saved === 'dark' || (!saved && sysDark)) {
-            document.documentElement.setAttribute('data-theme', 'dark');
-            themeBtn.textContent = '☀️';
-        }
 
         function toggleTheme() {
             const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
             if (isDark) {
                 document.documentElement.removeAttribute('data-theme');
-                localStorage.setItem('theme', 'light');
                 themeBtn.textContent = '🌙';
             } else {
                 document.documentElement.setAttribute('data-theme', 'dark');
-                localStorage.setItem('theme', 'dark');
                 themeBtn.textContent = '☀️';
             }
         }
 
-        // ===== 初始化：加载文件列表和所有txt内容 =====
+        // ===== 初始化 =====
         async function init() {
             const loadingDom = document.getElementById('loading');
             const resultDom = document.getElementById('result');
@@ -247,7 +239,6 @@
             try {
                 loadingDom.textContent = '正在读取文件列表…';
 
-                // 读取 files.txt 获取文件名列表
                 const listResp = await fetch('./files.txt');
                 if (!listResp.ok) throw new Error('files.txt 不存在');
                 const listText = await listResp.text();
@@ -257,7 +248,6 @@
 
                 loadingDom.textContent = `正在加载 ${fileNames.length} 个文件…`;
 
-                // 并行加载所有txt内容
                 const results = await Promise.allSettled(
                     fileNames.map(async (name) => {
                         const resp = await fetch('./' + name);
@@ -285,14 +275,12 @@
             const btn = document.getElementById('searchBtn');
             const input = document.getElementById('searchInput');
 
-            // 防止重复点击
             if (isSearching) return;
 
             const kw = input.value.trim().toLowerCase();
             const resultDom = document.getElementById('result');
             const countDom = document.getElementById('count');
 
-            // 清除上一次防抖
             if (searchTimer) clearTimeout(searchTimer);
 
             if (!kw) {
@@ -301,7 +289,6 @@
                 return;
             }
 
-            // 防抖 300ms + 锁定
             btn.disabled = true;
             isSearching = true;
             btn.textContent = '搜索中…';
@@ -312,14 +299,12 @@
         }
 
         function doSearch(kw, resultDom, countDom, btn) {
-            // 清空上一次结果
             resultDom.innerHTML = '';
             countDom.textContent = '';
 
             let found = 0;
 
             for (const file of fileCache) {
-                // ✅ 只按文件名匹配
                 if (file.name.toLowerCase().includes(kw)) {
                     found++;
                     const id = 'file-' + found;
@@ -343,7 +328,6 @@
                 resultDom.innerHTML = '<div class="empty">没有匹配结果</div>';
             }
 
-            // 恢复按钮
             isSearching = false;
             btn.disabled = false;
             btn.textContent = '搜索';
@@ -364,7 +348,6 @@
                 .replace(/'/g, "&#039;");
         }
 
-        // 启动
         init();
     </script>
 </body>
