@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>搜索</title>
+    <title>TXT搜索器</title>
     <style>
         :root {
             --bg: #f5f5f5;
@@ -41,7 +41,6 @@
             margin: 0 auto;
         }
 
-        /* 顶部 */
         .header {
             display: flex;
             justify-content: space-between;
@@ -64,7 +63,6 @@
             color: var(--text);
         }
 
-        /* 搜索 */
         .search-row {
             display: flex;
             gap: 8px;
@@ -96,9 +94,20 @@
             font-size: 1rem;
             cursor: pointer;
             white-space: nowrap;
+            transition: opacity 0.2s;
         }
 
-        /* 结果列表 */
+        #searchBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            font-size: 0.85rem;
+            color: var(--sub);
+            margin-bottom: 8px;
+        }
+
         #result {
             display: flex;
             flex-direction: column;
@@ -175,7 +184,6 @@
             font-size: 0.95rem;
         }
 
-        /* 手机适配 */
         @media (max-width: 480px) {
             body { padding: 12px; }
             .search-row { flex-direction: column; }
@@ -191,40 +199,24 @@
         </div>
         
         <div class="search-row">
-            <input type="text" id="searchInput" placeholder="输入关键词搜索…" onkeydown="if(event.key==='Enter')searchFiles()">
+            <input type="text" id="searchInput" placeholder="输入关键词搜索文件名…" onkeydown="if(event.key==='Enter')searchFiles()">
             <button id="searchBtn" onclick="searchFiles()">搜索</button>
         </div>
         
+        <div class="loading" id="loading"></div>
         <div class="count" id="count"></div>
         <div id="result">
-            <div class="empty">输入关键词开始搜索</div>
+            <div class="empty">正在加载文件列表…</div>
         </div>
     </div>
     
     <script>
-        // ========= 在这里手动添加txt文件名 =========
-        const txtFileList = [
-"[1v1 完结]《双性小皇帝调教指南（古代_高H_BDSM_虐身》作者：没有名字.txt",
-            "《深度诱入》作者：欲晓 (父子 年下 高H).txt",
-            "《蛇缚番外》BY月色如殇 (蛇X人 父子 高H).txt",
-            "《鬼父》作者：再别今夜.txt",
-            "危险试验小少爷调教指南 作者：雪月零.txt",
-            "双颜引诱.txt",
-            "奈上越轨.txt",
-            "封刀.txt",
-            "思予不良.txt",
-            "晚听清夜.txt",
-            "晚听纵容.txt",
-            "柚欢系统.txt",
-            "秋茉争夺.txt",
-            "老师，你的狗链掉了（双性，调教，sm） 作者：肉丸爱吃肉.txt",
-            "臣服游戏（BDSM） 作者：结草的兔子.txt",
-            "草莓哭包.txt",
-            "鬼之花嫁.txt",
-        ];
-        const basePath = "./";
+        // ===== 数据缓存 =====
+        let fileCache = [];       // [{name, content}]
+        let isSearching = false;  // 防止重复搜索
+        let searchTimer = null;   // 防抖
 
-        // ===== 深色模式 =====
+        // ===== 主题 =====
         const themeBtn = document.querySelector('.theme-toggle');
         const saved = localStorage.getItem('theme');
         const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -247,51 +239,102 @@
             }
         }
 
-        // ===== 搜索 =====
-        async function searchFiles() {
-            const kw = document.getElementById("searchInput").value.trim().toLowerCase();
-            const resultDom = document.getElementById("result");
-            const countDom = document.getElementById("count");
-            resultDom.innerHTML = "";
-            countDom.textContent = "";
+        // ===== 初始化：加载文件列表和所有txt内容 =====
+        async function init() {
+            const loadingDom = document.getElementById('loading');
+            const resultDom = document.getElementById('result');
+
+            try {
+                loadingDom.textContent = '正在读取文件列表…';
+
+                // 读取 files.txt 获取文件名列表
+                const listResp = await fetch('./files.txt');
+                if (!listResp.ok) throw new Error('files.txt 不存在');
+                const listText = await listResp.text();
+                const fileNames = listText.split('\n')
+                    .map(s => s.trim())
+                    .filter(s => s && s.endsWith('.txt'));
+
+                loadingDom.textContent = `正在加载 ${fileNames.length} 个文件…`;
+
+                // 并行加载所有txt内容
+                const results = await Promise.allSettled(
+                    fileNames.map(async (name) => {
+                        const resp = await fetch('./' + name);
+                        if (!resp.ok) throw new Error('读取失败');
+                        const content = await resp.text();
+                        return { name, content };
+                    })
+                );
+
+                fileCache = results
+                    .filter(r => r.status === 'fulfilled')
+                    .map(r => r.value);
+
+                loadingDom.textContent = '';
+                resultDom.innerHTML = '<div class="empty">输入关键词搜索文件名</div>';
+            } catch (e) {
+                loadingDom.textContent = '';
+                resultDom.innerHTML = '<div class="empty">初始化失败，请确认 files.txt 存在</div>';
+                console.error(e);
+            }
+        }
+
+        // ===== 搜索（只匹配文件名）=====
+        function searchFiles() {
+            const btn = document.getElementById('searchBtn');
+            const input = document.getElementById('searchInput');
+
+            // 防止重复点击
+            if (isSearching) return;
+
+            const kw = input.value.trim().toLowerCase();
+            const resultDom = document.getElementById('result');
+            const countDom = document.getElementById('count');
+
+            // 清除上一次防抖
+            if (searchTimer) clearTimeout(searchTimer);
 
             if (!kw) {
-                resultDom.innerHTML = '<div class="empty">输入关键词开始搜索</div>';
+                resultDom.innerHTML = '<div class="empty">输入关键词搜索文件名</div>';
+                countDom.textContent = '';
                 return;
             }
 
-            if (txtFileList.length === 0) {
-                resultDom.innerHTML = '<div class="empty">暂无文件</div>';
-                return;
-            }
+            // 防抖 300ms + 锁定
+            btn.disabled = true;
+            isSearching = true;
+            btn.textContent = '搜索中…';
+
+            searchTimer = setTimeout(() => {
+                doSearch(kw, resultDom, countDom, btn);
+            }, 300);
+        }
+
+        function doSearch(kw, resultDom, countDom, btn) {
+            // 清空上一次结果
+            resultDom.innerHTML = '';
+            countDom.textContent = '';
 
             let found = 0;
 
-            for (const fileName of txtFileList) {
-                try {
-                    const resp = await fetch(basePath + fileName);
-                    const text = await resp.text();
-                    const lowerText = text.toLowerCase();
-                    if (fileName.toLowerCase().includes(kw) || lowerText.includes(kw)) {
-                        found++;
-                        const escapedName = escapeHtml(fileName);
-                        const escapedText = escapeHtml(text);
-                        const id = 'file-' + found;
+            for (const file of fileCache) {
+                // ✅ 只按文件名匹配
+                if (file.name.toLowerCase().includes(kw)) {
+                    found++;
+                    const id = 'file-' + found;
 
-                        resultDom.innerHTML += `
+                    resultDom.innerHTML += `
                         <div class="file-item">
                             <div class="file-header" onclick="toggleContent('${id}')">
-                                <span class="name">📄 ${escapedName}</span>
+                                <span class="name">📄 ${escapeHtml(file.name)}</span>
                                 <span class="arrow">▶</span>
                             </div>
                             <div class="file-content" id="${id}">
-                                <pre>${escapedText}</pre>
+                                <pre>${escapeHtml(file.content)}</pre>
                             </div>
                         </div>
                     `;
-                    }
-                } catch (e) {
-                    console.log("读取失败：" + fileName);
                 }
             }
 
@@ -299,6 +342,11 @@
             if (found === 0) {
                 resultDom.innerHTML = '<div class="empty">没有匹配结果</div>';
             }
+
+            // 恢复按钮
+            isSearching = false;
+            btn.disabled = false;
+            btn.textContent = '搜索';
         }
 
         function toggleContent(id) {
@@ -315,6 +363,9 @@
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
         }
+
+        // 启动
+        init();
     </script>
 </body>
 </html>
