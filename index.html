@@ -197,6 +197,12 @@
             color: var(--accent-text);
         }
 
+        .loading-text {
+            color: var(--sub);
+            font-size: 0.85rem;
+            padding: 12px 0;
+        }
+
         .empty {
             text-align: center;
             color: var(--sub);
@@ -231,12 +237,13 @@
     </div>
     
     <script>
-        // ===== 数据缓存 =====
-        let fileCache = [];
+        // ===== 数据 =====
+        let fileList = [];        // 只存文件名 [{name}]
+        let contentCache = {};    // 已读内容缓存 {name: content}
         let isSearching = false;
         let searchTimer = null;
 
-        // ===== 主题：默认深色，不存储 =====
+        // ===== 主题 =====
         document.documentElement.setAttribute('data-theme', 'dark');
         const themeBtn = document.querySelector('.theme-toggle');
 
@@ -251,7 +258,48 @@
             }
         }
 
-        // ===== 渲染文件列表（核心函数，搜索和初始化共用）=====
+        // ===== 初始化：只加载文件名列表 =====
+        async function init() {
+            const loadingDom = document.getElementById('loading');
+            const resultDom = document.getElementById('result');
+
+            try {
+                loadingDom.textContent = '正在读取文件列表…';
+
+                const listResp = await fetch('./files.txt');
+                if (!listResp.ok) throw new Error('files.txt 不存在');
+                const listText = await listResp.text();
+                const fileNames = listText.split('\n')
+                    .map(s => s.trim())
+                    .filter(s => s && s.endsWith('.txt'));
+
+                // ✅ 只存文件名，不读内容
+                fileList = fileNames.map(name => ({ name }));
+
+                loadingDom.textContent = '';
+                renderFiles(null);
+            } catch (e) {
+                loadingDom.textContent = '';
+                resultDom.innerHTML = '<div class="empty">初始化失败，请确认 files.txt 存在</div>';
+                console.error(e);
+            }
+        }
+
+        // ===== 按需加载单个文件内容 =====
+        async function loadContent(fileName) {
+            // 已缓存直接返回
+            if (contentCache[fileName]) {
+                return contentCache[fileName];
+            }
+            // 否则 fetch
+            const resp = await fetch('./' + fileName);
+            if (!resp.ok) throw new Error('读取失败');
+            const content = await resp.text();
+            contentCache[fileName] = content;
+            return content;
+        }
+
+        // ===== 渲染文件列表 =====
         function renderFiles(filterKw) {
             const resultDom = document.getElementById('result');
             const countDom = document.getElementById('count');
@@ -261,8 +309,7 @@
 
             let found = 0;
 
-            for (const file of fileCache) {
-                // 无关键词 → 显示全部；有关键词 → 按文件名过滤
+            for (const file of fileList) {
                 if (!filterKw || file.name.toLowerCase().includes(filterKw)) {
                     found++;
                     const id = 'file-' + found;
@@ -270,15 +317,12 @@
 
                     resultDom.innerHTML += `
                         <div class="file-item">
-                            <div class="file-header" onclick="toggleContent('${id}')">
+                            <div class="file-header" onclick="toggleContent('${id}', '${file.name.replace(/'/g, "\\'")}')">
                                 <span class="name">📄 ${safeName}</span>
                                 <span class="arrow">▶</span>
                             </div>
                             <div class="file-content" id="${id}">
-                                <pre>${escapeHtml(file.content)}</pre>
-                                <button class="download-btn" onclick="downloadFile('${file.name.replace(/'/g, "\\'")}')">
-                                    ⬇️ 下载文件
-                                </button>
+                                <div class="loading-text">点击加载内容…</div>
                             </div>
                         </div>
                     `;
@@ -295,44 +339,36 @@
             }
         }
 
-        // ===== 初始化 =====
-        async function init() {
-            const loadingDom = document.getElementById('loading');
-            const resultDom = document.getElementById('result');
+        // ===== 点击展开：加载内容 =====
+        async function toggleContent(id, fileName) {
+            const content = document.getElementById(id);
+            const header = content.parentElement.querySelector('.file-header');
 
-            try {
-                loadingDom.textContent = '正在读取文件列表…';
+            if (content.classList.contains('show')) {
+                // 收起
+                content.classList.remove('show');
+                header.classList.remove('open');
+                return;
+            }
 
-                const listResp = await fetch('./files.txt');
-                if (!listResp.ok) throw new Error('files.txt 不存在');
-                const listText = await listResp.text();
-                const fileNames = listText.split('\n')
-                    .map(s => s.trim())
-                    .filter(s => s && s.endsWith('.txt'));
+            // 展开前先显示加载中
+            content.classList.add('show');
+            header.classList.add('open');
 
-                loadingDom.textContent = `正在加载 ${fileNames.length} 个文件…`;
-
-                const results = await Promise.allSettled(
-                    fileNames.map(async (name) => {
-                        const resp = await fetch('./' + name);
-                        if (!resp.ok) throw new Error('读取失败');
-                        const content = await resp.text();
-                        return { name, content };
-                    })
-                );
-
-                fileCache = results
-                    .filter(r => r.status === 'fulfilled')
-                    .map(r => r.value);
-
-                loadingDom.textContent = '';
-
-                // ✅ 加载完成后直接渲染全部文件
-                renderFiles(null);
-            } catch (e) {
-                loadingDom.textContent = '';
-                resultDom.innerHTML = '<div class="empty">初始化失败，请确认 files.txt 存在</div>';
-                console.error(e);
+            // 如果还没加载过内容
+            if (!contentCache[fileName]) {
+                content.innerHTML = '<div class="loading-text">⏳ 加载中…</div>';
+                try {
+                    const text = await loadContent(fileName);
+                    content.innerHTML = `
+                        <pre>${escapeHtml(text)}</pre>
+                        <button class="download-btn" onclick="downloadFile('${fileName.replace(/'/g, "\\'")}')">
+                            ⬇️ 下载文件
+                        </button>
+                    `;
+                } catch (e) {
+                    content.innerHTML = '<div class="loading-text">❌ 加载失败</div>';
+                }
             }
         }
 
@@ -347,7 +383,6 @@
 
             if (searchTimer) clearTimeout(searchTimer);
 
-            // 空关键词 → 显示全部
             if (!kw) {
                 renderFiles(null);
                 return;
@@ -366,30 +401,23 @@
             }, 300);
         }
 
-        // ===== 下载功能 =====
+        // ===== 下载 =====
         function downloadFile(fileName) {
-            const file = fileCache.find(f => f.name === fileName);
-            if (!file) {
-                alert('文件未找到：' + fileName);
+            const content = contentCache[fileName];
+            if (!content) {
+                alert('请先展开文件内容后再下载');
                 return;
             }
 
-            const blob = new Blob([file.content], { type: 'text/plain;charset=utf-8' });
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = file.name;
+            a.download = fileName;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        }
-
-        function toggleContent(id) {
-            const content = document.getElementById(id);
-            const header = content.parentElement.querySelector('.file-header');
-            content.classList.toggle('show');
-            header.classList.toggle('open');
         }
 
         function escapeHtml(str) {
