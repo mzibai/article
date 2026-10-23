@@ -216,6 +216,13 @@
             margin-top: 6px;
         }
 
+        .action-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
         @media (max-width: 480px) {
             body { padding: 12px; }
             .search-row { flex-direction: column; }
@@ -325,7 +332,12 @@
                                 <span class="arrow">▶</span>
                             </div>
                             <div class="file-content" id="${id}">
-                                <div class="loading-text">点击加载内容…</div>
+                                <div class="loading-text">点击加载预览…</div>
+                                <div class="action-row">
+                                    <button class="download-btn" onclick="downloadFileDirect('${file.name.replace(/'/g, "\\'")}', event)">
+                                        ⬇️ 下载文件
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -342,7 +354,7 @@
             }
         }
 
-        // ===== 点击展开：加载内容，只显示前200字 =====
+        // ===== 点击展开：加载预览内容，只显示前200字 =====
         async function toggleContent(id, fileName) {
             const content = document.getElementById(id);
             const header = content.parentElement.querySelector('.file-header');
@@ -356,25 +368,64 @@
             content.classList.add('show');
             header.classList.add('open');
 
+            // 如果还没加载过预览内容，去加载
             if (!contentCache[fileName]) {
-                content.innerHTML = '<div class="loading-text">⏳ 加载中…</div>';
+                const previewArea = content.querySelector('.loading-text');
+                previewArea.textContent = '⏳ 加载预览中…';
                 try {
                     const text = await loadContent(fileName);
                     const maxLen = 200;
                     const isLong = text.length > maxLen;
                     const preview = isLong ? text.slice(0, maxLen) + '…' : text;
 
-                    content.innerHTML = `
-                        <pre>${escapeHtml(preview)}</pre>
-                        ${isLong ? `<div class="preview-hint">仅显示前 ${maxLen} 字，下载查看全文（共 ${text.length} 字）</div>` : ''}
-                        <button class="download-btn" onclick="downloadFile('${fileName.replace(/'/g, "\\'")}')">
-                            ⬇️ 下载文件
-                        </button>
-                    `;
+                    // 替换加载提示为预览内容
+                    const pre = document.createElement('pre');
+                    pre.textContent = preview;
+                    previewArea.replaceWith(pre);
+
+                    // 如果超长，加提示
+                    if (isLong) {
+                        const hint = document.createElement('div');
+                        hint.className = 'preview-hint';
+                        hint.textContent = `仅显示前 ${maxLen} 字，下载查看全文（共 ${text.length} 字）`;
+                        content.insertBefore(hint, content.querySelector('.action-row'));
+                    }
                 } catch (e) {
-                    content.innerHTML = '<div class="loading-text">❌ 加载失败</div>';
+                    previewArea.textContent = '❌ 预览加载失败，请直接下载文件';
                 }
             }
+        }
+
+        // ===== 直接下载（不依赖预览加载） =====
+        function downloadFileDirect(fileName, event) {
+            event.stopPropagation(); // 防止触发折叠
+
+            // 如果已缓存就直接用缓存
+            if (contentCache[fileName]) {
+                const blob = new Blob([contentCache[fileName]], { type: 'text/plain;charset=utf-8' });
+                triggerDownload(blob, fileName);
+                return;
+            }
+
+            // 没缓存就直接从服务器下载，不读进内存
+            const a = document.createElement('a');
+            a.href = './' + fileName;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // ===== 触发下载 =====
+        function triggerDownload(blob, fileName) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         // ===== 搜索 =====
@@ -404,25 +455,6 @@
                 btn.disabled = false;
                 btn.textContent = '搜索';
             }, 300);
-        }
-
-        // ===== 下载 =====
-        function downloadFile(fileName) {
-            const content = contentCache[fileName];
-            if (!content) {
-                alert('请先展开文件内容后再下载');
-                return;
-            }
-
-            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
         }
 
         function escapeHtml(str) {
