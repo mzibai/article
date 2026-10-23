@@ -210,6 +210,12 @@
             font-size: 0.95rem;
         }
 
+        .preview-hint {
+            font-size: 0.8rem;
+            color: var(--sub);
+            margin-top: 6px;
+        }
+
         @media (max-width: 480px) {
             body { padding: 12px; }
             .search-row { flex-direction: column; }
@@ -273,7 +279,6 @@
                     .map(s => s.trim())
                     .filter(s => s && s.endsWith('.txt'));
 
-                // ✅ 只存文件名，不读内容
                 fileList = fileNames.map(name => ({ name }));
 
                 loadingDom.textContent = '';
@@ -287,11 +292,9 @@
 
         // ===== 按需加载单个文件内容 =====
         async function loadContent(fileName) {
-            // 已缓存直接返回
             if (contentCache[fileName]) {
                 return contentCache[fileName];
             }
-            // 否则 fetch
             const resp = await fetch('./' + fileName);
             if (!resp.ok) throw new Error('读取失败');
             const content = await resp.text();
@@ -339,40 +342,31 @@
             }
         }
 
-        // ===== 点击展开：加载内容（只显示前200字） =====
+        // ===== 点击展开：加载内容，只显示前200字 =====
         async function toggleContent(id, fileName) {
             const content = document.getElementById(id);
             const header = content.parentElement.querySelector('.file-header');
 
             if (content.classList.contains('show')) {
-                // 收起
                 content.classList.remove('show');
                 header.classList.remove('open');
                 return;
             }
 
-            // 展开前先显示加载中
             content.classList.add('show');
             header.classList.add('open');
 
-            // 如果还没加载过内容
             if (!contentCache[fileName]) {
                 content.innerHTML = '<div class="loading-text">⏳ 加载中…</div>';
                 try {
                     const text = await loadContent(fileName);
                     const maxLen = 200;
                     const isLong = text.length > maxLen;
-                    const preview = isLong ? text.slice(0, maxLen) : text;
+                    const preview = isLong ? text.slice(0, maxLen) + '…' : text;
 
                     content.innerHTML = `
-                        <pre id="text-${id}">${escapeHtml(preview)}${isLong ? '…' : ''}</pre>
-                        ${isLong ? `
-                            <div style="margin-top:8px">
-                                <button class="download-btn" onclick="expandText('${id}', '${fileName.replace(/'/g, "\\'")}')">
-                                    📖 展开全文（共 ${text.length} 字）
-                                </button>
-                            </div>
-                        ` : ''}
+                        <pre>${escapeHtml(preview)}</pre>
+                        ${isLong ? `<div class="preview-hint">仅显示前 ${maxLen} 字，下载查看全文（共 ${text.length} 字）</div>` : ''}
                         <button class="download-btn" onclick="downloadFile('${fileName.replace(/'/g, "\\'")}')">
                             ⬇️ 下载文件
                         </button>
@@ -381,21 +375,6 @@
                     content.innerHTML = '<div class="loading-text">❌ 加载失败</div>';
                 }
             }
-        }
-
-        // ===== 展开全文 =====
-        function expandText(id, fileName) {
-            const textDom = document.getElementById('text-' + id);
-            const content = document.getElementById(id);
-            const text = contentCache[fileName];
-
-            if (!text) return;
-
-            textDom.textContent = text;
-
-            // 移除"展开全文"按钮
-            const btn = content.querySelector('button[onclick*="expandText"]');
-            if (btn) btn.remove();
         }
 
         // ===== 搜索 =====
