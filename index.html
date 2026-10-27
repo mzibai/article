@@ -53,7 +53,14 @@
             font-weight: 600;
         }
 
-        .theme-toggle {
+        .header-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .theme-toggle,
+        .sort-toggle {
             background: none;
             border: 1px solid var(--border);
             border-radius: 20px;
@@ -234,7 +241,10 @@
     <div class="container">
         <div class="header">
             <h2>TXT搜索</h2>
-            <button class="theme-toggle" onclick="toggleTheme()">☀️</button>
+            <div class="header-actions">
+                <button class="sort-toggle" onclick="toggleSort()" id="sortBtn">按添加顺序</button>
+                <button class="theme-toggle" onclick="toggleTheme()">☀️</button>
+            </div>
         </div>
         
         <div class="search-row">
@@ -255,6 +265,7 @@
         let contentCache = {};    // 已读内容缓存 {name: content}
         let isSearching = false;
         let searchTimer = null;
+        let sortMode = 'order';   // 'order' | 'alpha'
 
         // ===== 主题 =====
         document.documentElement.setAttribute('data-theme', 'dark');
@@ -269,6 +280,17 @@
                 document.documentElement.setAttribute('data-theme', 'dark');
                 themeBtn.textContent = '☀️';
             }
+        }
+
+        // ===== 排序切换 =====
+        function toggleSort() {
+            sortMode = sortMode === 'order' ? 'alpha' : 'order';
+            document.getElementById('sortBtn').textContent =
+                sortMode === 'order' ? '按添加顺序' : '按首字母';
+
+            // 重新渲染当前结果
+            const kw = document.getElementById('searchInput').value.trim().toLowerCase();
+            renderFiles(kw || null);
         }
 
         // ===== 初始化：只加载文件名列表 =====
@@ -317,9 +339,15 @@
             resultDom.innerHTML = '';
             countDom.textContent = '';
 
+            // 排序
+            let displayList = [...fileList];
+            if (sortMode === 'alpha') {
+                displayList.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+            }
+
             let found = 0;
 
-            for (const file of fileList) {
+            for (const file of displayList) {
                 if (!filterKw || file.name.toLowerCase().includes(filterKw)) {
                     found++;
                     const id = 'file-' + found;
@@ -368,7 +396,6 @@
             content.classList.add('show');
             header.classList.add('open');
 
-            // 如果还没加载过预览内容，去加载
             if (!contentCache[fileName]) {
                 const previewArea = content.querySelector('.loading-text');
                 previewArea.textContent = '⏳ 加载预览中…';
@@ -378,12 +405,10 @@
                     const isLong = text.length > maxLen;
                     const preview = isLong ? text.slice(0, maxLen) + '…' : text;
 
-                    // 替换加载提示为预览内容
                     const pre = document.createElement('pre');
                     pre.textContent = preview;
                     previewArea.replaceWith(pre);
 
-                    // 如果超长，加提示
                     if (isLong) {
                         const hint = document.createElement('div');
                         hint.className = 'preview-hint';
@@ -396,18 +421,16 @@
             }
         }
 
-        // ===== 直接下载（不依赖预览加载） =====
+        // ===== 直接下载 =====
         function downloadFileDirect(fileName, event) {
-            event.stopPropagation(); // 防止触发折叠
+            event.stopPropagation();
 
-            // 如果已缓存就直接用缓存
             if (contentCache[fileName]) {
                 const blob = new Blob([contentCache[fileName]], { type: 'text/plain;charset=utf-8' });
                 triggerDownload(blob, fileName);
                 return;
             }
 
-            // 没缓存就直接从服务器下载，不读进内存
             const a = document.createElement('a');
             a.href = './' + fileName;
             a.download = fileName;
@@ -416,7 +439,6 @@
             document.body.removeChild(a);
         }
 
-        // ===== 触发下载 =====
         function triggerDownload(blob, fileName) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
